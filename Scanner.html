@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scanner Barcode • Koli Box TGI OPS</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{font-family:Arial,sans-serif;color:#422006;background:#fffaf0}*{box-sizing:border-box}body{margin:0;padding:16px}.card{max-width:560px;margin:0 auto;background:#fff;border:1px solid #fde3a7;border-radius:16px;padding:18px;box-shadow:0 8px 24px #9a34120d}h1{font-size:21px;margin:0 0 6px;color:#9a3412}.muted{font-size:13px;color:#92400e;line-height:1.5}#reader{width:100%;margin-top:14px;overflow:hidden;border-radius:12px}button{border:0;border-radius:10px;padding:12px 15px;font-weight:700;cursor:pointer;background:#ea580c;color:#fff;margin:6px 6px 0 0}button.secondary{background:#fff1c2;color:#9a3412;border:1px solid #fcd34d}#status{margin-top:12px;border-radius:10px;padding:10px;background:#fff7df;font-size:13px;overflow-wrap:anywhere}.code{font-size:18px;font-weight:bold;overflow-wrap:anywhere}.hint{font-size:12px;color:#92400e;margin-top:12px}
+</style></head>
+<body><main class="card"><h1>Scanner Barcode</h1><p class="muted">TGI OPS • Koli Box Management. Izinkan akses kamera pada halaman ini, lalu arahkan barcode ke kotak pemindai.</p><div id="reader"></div><div id="status" role="status">Menyiapkan scanner…</div><div><button id="restart" type="button">Mulai / Coba Lagi</button><button id="cancel" class="secondary" type="button">Tutup Scanner</button></div><p class="hint">Jika izin ditolak, klik ikon pengaturan di sebelah kiri alamat halaman ini → Kamera → Izinkan, kemudian muat ulang halaman. Pastikan halaman menggunakan HTTPS.</p></main>
+<script>
+let scanner=null,starting=false,done=false;
+const statusEl=document.getElementById('status');
+function setStatus(message,error=false){statusEl.textContent=message;statusEl.style.background=error?'#fee2e2':'#fff7df';statusEl.style.color=error?'#991b1b':'#92400e';}
+function notifyParent(message){try{if(window.opener&&!window.opener.closed)window.opener.postMessage(message,'*')}catch(e){}}
+async function stopScanner(){const old=scanner;scanner=null;if(old){try{if(old.isScanning)await old.stop()}catch(e){}try{old.clear()}catch(e){}}document.getElementById('reader').innerHTML='';}
+async function startScanner(){if(starting||done)return;starting=true;document.getElementById('restart').disabled=true;setStatus('Meminta akses kamera…');await stopScanner();
+ try{
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Browser tidak menyediakan akses kamera. Pastikan halaman scanner menggunakan HTTPS.');
+  if(typeof Html5Qrcode==='undefined')throw new Error('Library scanner gagal dimuat. Periksa koneksi internet lalu coba lagi.');
+  const formats=[Html5QrcodeSupportedFormats.EAN_13,Html5QrcodeSupportedFormats.EAN_8,Html5QrcodeSupportedFormats.CODE_128,Html5QrcodeSupportedFormats.CODE_39,Html5QrcodeSupportedFormats.UPC_A,Html5QrcodeSupportedFormats.UPC_E,Html5QrcodeSupportedFormats.ITF,Html5QrcodeSupportedFormats.QR_CODE];
+  scanner=new Html5Qrcode('reader',{formatsToSupport:formats,verbose:false});
+  const config={fps:10,qrbox:{width:260,height:150},aspectRatio:1.777};
+  const onSuccess=async decoded=>{if(done)return;done=true;const barcode=String(decoded||'').trim();setStatus('Barcode terbaca: '+barcode);notifyParent({type:'KOLI_BARCODE_SCANNED',barcode});await stopScanner();setTimeout(()=>window.close(),350)};
+  try{await scanner.start({facingMode:'environment'},config,onSuccess,()=>{});setStatus('Kamera aktif. Arahkan barcode ke dalam kotak pemindai.');}
+  catch(firstError){try{if(scanner&&scanner.isScanning)await scanner.stop()}catch(e){};const cameras=await Html5Qrcode.getCameras();if(!cameras||!cameras.length)throw firstError;scanner=new Html5Qrcode('reader',{formatsToSupport:formats,verbose:false});await scanner.start(cameras[0].id,config,onSuccess,()=>{});setStatus('Kamera aktif. Arahkan barcode ke dalam kotak pemindai.');}
+ }catch(err){const name=String(err&&err.name||'');const msg=String(err&&err.message||err||'Tidak ada detail');let friendly='Kamera gagal dibuka.';if(/NotAllowedError|SecurityError|PermissionDeniedError/i.test(name)||/permission denied|permission is denied|notallowederror|user denied/i.test(msg))friendly='Browser menolak izin kamera pada halaman scanner. Klik ikon di kiri alamat halaman ini → Kamera → Izinkan, lalu muat ulang halaman.';else if(/NotFoundError|DevicesNotFoundError/i.test(name)||/no camera|device not found/i.test(msg))friendly='Kamera tidak ditemukan. Periksa kamera perangkat.';else if(/NotReadableError|TrackStartError|AbortError/i.test(name)||/could not start video source|device in use/i.test(msg))friendly='Kamera sedang dipakai aplikasi lain atau tidak dapat dibuka. Tutup aplikasi lain yang menggunakan kamera.';setStatus(friendly+' Detail: '+name+(name?' — ':'')+msg,true);notifyParent({type:'KOLI_SCANNER_ERROR',message:friendly+' '+msg});}
+ finally{starting=false;document.getElementById('restart').disabled=false;}}
+document.getElementById('restart').addEventListener('click',()=>{done=false;startScanner()});
+document.getElementById('cancel').addEventListener('click',async()=>{notifyParent({type:'KOLI_SCANNER_CANCELLED'});await stopScanner();window.close()});
+window.addEventListener('beforeunload',()=>{try{if(scanner&&scanner.isScanning)scanner.stop()}catch(e){}});
+startScanner();
+</script></body></html>
